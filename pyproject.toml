@@ -1,0 +1,13 @@
+[project]
+name = "mini-recsys"
+version = "0.1.0"
+description = "Mini-recsys"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.3.5",
+    "torch>=2.9.1",
+    "pyarrow>=19.0.0",
+    "pandas>=2.2.3",
+    "pytest>=9.0.1",
+]
