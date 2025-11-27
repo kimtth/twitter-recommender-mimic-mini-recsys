@@ -2,6 +2,38 @@
 
 Educational implementation covering core concepts from [Twitter's algorithm](https://github.com/twitter/the-algorithm).
 
+## Contents
+
+- [Architecture Overview](#architecture-overview)
+- [End-to-End Flow](#end-to-end-flow)
+- [Component Details](#component-details)
+  - [1. Pipeline Framework](#1-pipeline-framework)
+  - [2. Candidate Sources](#2-candidate-sources)
+  - [3. Scoring Models](#3-scoring-models)
+  - [4. Post-Processing](#4-post-processing)
+- [Data Flow & Feature Engineering](#data-flow--feature-engineering)
+- [How to Use](#how-to-use)
+  - [Quick Start (Automated)](#quick-start-automated)
+  - [Manual Steps](#manual-steps)
+- [Running](#running)
+  - [Step 1: Generate Synthetic Dataset](#step-1-generate-synthetic-dataset)
+  - [Step 2: Train PyTorch Models](#step-2-train-pytorch-models-optional---requires-pytorch)
+  - [Step 3: Run Recommendation System](#step-3-run-recommendation-system)
+  - [Step 4: Run Evaluation](#step-4-run-evaluation)
+  - [Understanding the Output](#understanding-the-output)
+- [File Structure](#file-structure)
+  - [Module Details](#module-details)
+- [Key Concepts](#key-concepts)
+  - [Synthetic Dataset](#synthetic-dataset)
+  - [PyTorch Models](#pytorch-models)
+  - [Multi-Head Scoring](#multi-head-scoring)
+  - [Diversity & Safety](#diversity--safety)
+  - [Evaluation Methodology](#evaluation-methodology)
+- [Limitations & Comparison](#limitations--comparison)
+- [How It Works (Step-by-Step)](#how-it-works-step-by-step)
+- [Mapping to Twitter's Codebase](#mapping-to-twitters-codebase)
+  - [Key Differences from Production](#key-differences-from-production)
+
 ## Architecture Overview
 
 ```mermaid
@@ -584,6 +616,8 @@ Evaluation system mirrors Twitter's metrics pipeline:
 | `NSFWModel`, `ToxicityModel` | `trust_and_safety_models/` | ⚠️ Low | **MLP on metadata** (production uses BERT) |
 | `EngagementModel` | Heavy Ranker | ✅ High | 20 features vs 6000+, same pattern |
 
+**MLP on metadata** (production uses BERT): Multi-Layer Perceptron (stacked fully connected layers + nonlinear activations such as ReLU). Implemented in: engagement shared & head towers (models/engagement_model.py), safety models (models/safety_models.py). 
+
 ### Key Differences from Production
 
 | Component | Production | This Mimic | Why It's OK |
@@ -593,4 +627,4 @@ Evaluation system mirrors Twitter's metrics pipeline:
 | **Safety** | Twitter-BERT text encoder + image models | MLP on 10 numeric features | No text in synthetic data |
 | **Scale** | 6000+ features, millions of params | 20 features, 160K params | Educational scope |
 
-*See [Agents.md](Agents.md) for detailed discrepancy analysis.*
+*See [Agent.md](Agent.md) for detailed discrepancy analysis.*

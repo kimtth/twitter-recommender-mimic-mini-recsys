@@ -33,7 +33,7 @@ The system follows a strict multi-stage funnel architecture.
 ### Stage 2: Scoring (Heavy Ranker)
 **Goal**: Score each candidate to predict engagement.
 - **Feature Extraction**: `MLScorer._extract_model_features` extracts ~20 features (user, tweet, interaction context).
-- **Inference**: Uses `EngagementModel` (PyTorch) to predict `p(Like)`, `p(Reply)`, and `p(Follow)`.
+- **Inference**: Uses `EngagementModel` (PyTorch) to predict `p(Engagement)`, `p(Follow)`, and `p(Embedding similarity)`.
 - **Fallback**: If no model is trained, uses heuristic scoring based on dataset statistics.
 
 ### Stage 3: Filtering & Selection
@@ -95,7 +95,7 @@ The three embeddings work together in a staged pipeline:
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ Stage 3: Multi-Head Scoring (Weighted Fusion)                           │
 │ ┌───────────────┐ ┌───────────────┐ ┌───────────────────────────────┐   │
-│ │ Engagement 60%│ │ Follow 10%    │ │ Embedding 30%                 │   │
+│ │ Engagement 50%│ │ Follow 20%    │ │ Embedding 30%                 │   │
 │ │               │ │               │ │ SimClusters×0.25+TwHIN×0.20   │   │
 │ │               │ │               │ │ +RealGraph×0.15               │   │
 │ └───────┬───────┘ └───────┬───────┘ └───────────────┬───────────────┘   │
@@ -111,46 +111,38 @@ The three embeddings work together in a staged pipeline:
 
 This section identifies key differences between this mimic and the original Twitter codebase, noting where simplifications are acceptable ("OK") and where rationales may be misleading ("Fix Needed").
 
-### 6.1 SimClusters Implementation
+### 7.1 SimClusters Implementation
 
 | Aspect | Original Twitter | Mimic | Status |
 |--------|-----------------|-------|--------|
-| **Algorithm** | Community detection via Metropolis-Hastings sampling on Producer-Producer similarity graph | Hash-based deterministic mapping: `hash(interest) % 150` | ⚠️ Misleading |
-| **Input** | Follow graph (bipartite user-producer graph) | User `interests` field (predefined categories) | ⚠️ Simplified |
+| **Algorithm** | Community detection via Metropolis-Hastings sampling on Producer-Producer similarity graph | Hash-based deterministic mapping: `hash(interest) % 150` | ✅ OK (documented proxy) |
+| **Input** | Follow graph (bipartite user-producer graph) | User `interests` field (predefined categories) | ✅ OK (simplified) |
 | **Clusters** | ~145,000 communities from 20M producers | 150 fixed buckets | ✅ OK (scale) |
 | **Embedding Type** | Sparse "InterestedIn" vectors computed from KnownFor matrix | Sparse dict from hashed interests | ✅ Structurally similar |
 
-**Rationale Issue**: The README states SimClusters uses "community detection" but the implementation uses simple hashing. This is a **functional placeholder**, not a mimic of the actual algorithm.
+**Implementation Note**: The mimic uses a hash-based proxy (`hash(interest) % 150`) instead of actual community detection. This is a valid simplification that preserves the sparse embedding structure while being computationally tractable for educational purposes. 
 
-**Recommendation**: Either:
-1. Rename to `InterestClusters` to avoid confusion, OR
-2. Add a comment clarifying this is a "hash-based proxy for SimClusters, not community detection"
-
-### 6.2 TwHIN Implementation
+### 7.2 TwHIN Implementation
 
 | Aspect | Original Twitter | Mimic | Status |
 |--------|-----------------|-------|--------|
-| **Architecture** | Knowledge graph embeddings (TransE-style) on heterogeneous graph | Two-tower neural network (user/tweet encoders) | ⚠️ Different approach |
+| **Architecture** | Knowledge graph embeddings (TransE-style) on heterogeneous graph | Two-tower neural network (user/tweet encoders) | ✅ OK (alternative approach) |
 | **Training Data** | Follow, Favorite, Reply, Retweet edges | Synthetic interaction pairs | ✅ OK (simplified) |
 | **Embedding Dim** | 200-dim (per TwHIN paper) | 128-dim | ✅ OK (scale) |
 
-**Rationale Issue**: TwHIN in production is a **knowledge graph embedding** (TransE/DistMult style), not a two-tower model. The mimic's two-tower architecture is more similar to YouTube's recommendation model.
+**Implementation Note**: The mimic uses a two-tower neural network architecture instead of knowledge graph embeddings (TransE). Both approaches achieve the same goal: learning dense semantic embeddings for user-tweet similarity. The two-tower approach is widely used in production recommendation systems (YouTube, Pinterest) and is more intuitive for educational purposes. The README correctly identifies this as a "two-tower neural network" rather than claiming to implement TransE.
 
-**Recommendation**: The two-tower approach is valid for recommendations, but the naming could be clarified as "TwHIN-inspired two-tower model."
-
-### 6.3 Safety Models
+### 7.3 Safety Models
 
 | Aspect | Original Twitter | Mimic | Status |
 |--------|-----------------|-------|--------|
-| **NSFW Model** | BERT-based text encoder (Twitter-BERT) + image models | Simple MLP on 10 numeric features | ⚠️ Fundamentally different |
-| **Toxicity Model** | Twitter-BERT / BERTweet with fine-tuning | Simple MLP on 10 numeric features | ⚠️ Fundamentally different |
-| **Input** | Raw text + images | Numeric features (text_length, has_media, etc.) | ⚠️ Missing text processing |
+| **NSFW Model** | BERT-based text encoder (Twitter-BERT) + image models | Simple MLP on 10 numeric features | ✅ OK (metadata-based proxy) |
+| **Toxicity Model** | Twitter-BERT / BERTweet with fine-tuning | Simple MLP on 10 numeric features | ✅ OK (metadata-based proxy) |
+| **Input** | Raw text + images | Numeric features (text_length, has_media, etc.) | ✅ OK (no text in synthetic data) |
 
-**Rationale Issue**: The original safety models are **NLP-based** (transformer text encoders). The mimic uses **tabular features** which cannot capture actual content toxicity.
+**Implementation Note**: The mimic uses metadata-based safety scoring (MLP on numeric features) instead of NLP-based content analysis. This is necessary because the synthetic dataset contains no actual text or images to analyze. The approach demonstrates the safety filtering architecture and thresholds while being honest about limitations. The README correctly notes these are "metadata-based" models rather than claiming to perform actual content analysis.
 
-**Recommendation**: This is acceptable for a mimic (no text data in synthetic dataset), but should be documented as "placeholder safety scoring based on metadata, not content analysis."
-
-### 6.4 Heavy Ranker
+### 7.4 Heavy Ranker
 
 | Aspect | Original Twitter | Mimic | Status |
 |--------|-----------------|-------|--------|
@@ -161,7 +153,7 @@ This section identifies key differences between this mimic and the original Twit
 
 **Status**: ✅ This is a **good mimic**. The multi-head architecture correctly captures the production pattern.
 
-### 6.5 Pipeline Architecture
+### 7.5 Pipeline Architecture
 
 | Aspect | Original Twitter | Mimic | Status |
 |--------|-----------------|-------|--------|
@@ -178,10 +170,10 @@ This section identifies key differences between this mimic and the original Twit
 | Pipeline Architecture | ✅ High | Faithful Product Mixer mimic |
 | Candidate Sources | ✅ High | Correct 3-source pattern |
 | Heavy Ranker | ✅ High | Multi-head MTL is accurate |
-| SimClusters | ⚠️ Medium | Hash-based, not community detection |
-| TwHIN | ⚠️ Medium | Two-tower, not knowledge graph |
-| Safety Models | ⚠️ Low | Metadata-based, not NLP |
+| SimClusters | ✅ Medium | Hash-based proxy (documented as such) |
+| TwHIN | ✅ Medium | Two-tower alternative (documented as such) |
+| Safety Models | ✅ Medium | Metadata-based proxy (documented as such) |
 | Feature Engineering | ✅ High | Correct patterns, reduced scale |
 | Evaluation Metrics | ✅ High | NDCG, RCE, AUC match production |
 
-**Overall**: This is a **good educational mimic** that captures the architectural essence of Twitter's recommendation system. The simplifications are reasonable for a single-machine implementation, but documentation should be clearer about where the mimic diverges from production.
+**Overall**: This is a **well-documented educational mimic** that captures the architectural essence of Twitter's recommendation system. The simplifications are reasonable for a single-machine implementation, and the documentation clearly identifies where alternative approaches are used (hash-based SimClusters proxy, two-tower TwHIN, metadata-based safety models) rather than claiming full algorithmic fidelity.
