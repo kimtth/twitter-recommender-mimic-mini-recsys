@@ -1,6 +1,19 @@
 """
 Safety models for content filtering
-Mimics Twitter's Trust & Safety models
+
+Simplified placeholders for Twitter's Trust & Safety models.
+
+Production models use:
+- Twitter-BERT / BERTweet text encoders for NLP-based content analysis
+- Vision models (CNN/ViT) for image/video NSFW detection
+- Multi-task learning across abuse types
+
+This mimic uses:
+- Simple MLP on numeric metadata features (text_length, has_media, etc.)
+- Cannot detect actual NSFW/toxic content from text
+- Predicts based on statistical correlates in synthetic data
+
+See: trust_and_safety_models/ in twitter/the-algorithm
 """
 import torch
 import torch.nn as nn
@@ -8,9 +21,14 @@ import torch.nn as nn
 
 class NSFWModel(nn.Module):
     """
-    NSFW (Not Safe For Work) content detection model
+    Metadata-based NSFW scoring (placeholder for production BERT + vision model).
     
-    Simple binary classifier for detecting explicit content
+    Production uses Twitter-BERT text encoder + image classifiers trained on
+    labeled NSFW content. This mimic uses numeric features only, which cannot
+    detect actual NSFW content—it predicts based on correlates like media presence.
+    
+    Input: 10 numeric features (text_length, has_media, has_link, etc.)
+    Output: Probability score [0, 1]
     """
     
     def __init__(self, input_dim=10):
@@ -80,9 +98,14 @@ class NSFWModel(nn.Module):
 
 class ToxicityModel(nn.Module):
     """
-    Toxicity detection model
+    Metadata-based toxicity scoring (placeholder for production BERT model).
     
-    Detects toxic, harmful, or abusive content
+    Production uses Twitter-BERT / BERTweet with fine-tuning on labeled
+    toxic content (hate speech, harassment, abuse). This mimic uses numeric
+    features only, which cannot detect actual toxicity from text.
+    
+    Input: 10 numeric features (text_length, has_media, has_link, etc.)
+    Output: Probability score [0, 1]
     """
     
     def __init__(self, input_dim=10):

@@ -13,13 +13,13 @@ This table maps original Twitter components to their implementation in this code
 | Concept | Original Component | Mimic Implementation | File Path |
 | :--- | :--- | :--- | :--- |
 | **Orchestrator** | Home Mixer | `MixerPipeline` | `pipeline.py` |
-| **Retrieval (In-Network)** | Earlybird | `InNetworkSource` | `candidates.py` |
-| **Retrieval (Embedding)** | SimClusters / TwHIN | `OutOfNetworkSource` | `candidates.py` |
-| **Retrieval (Graph)** | RealGraph / GraphJet | `GraphSource` | `candidates.py` |
-| **Scoring (Ranker)** | Heavy Ranker (MaskNet) | `MLScorer` | `scoring.py` |
+| **Retrieval (In-Network)** | Earlybird Search Index | `InNetworkSource` | `candidates.py` |
+| **Retrieval (Embedding)** | CR-Mixer (SimClusters + TwHIN) | `OutOfNetworkSource` | `candidates.py` |
+| **Retrieval (Graph)** | UTEG (User Tweet Entity Graph) | `GraphSource` | `candidates.py` |
+| **Scoring (Ranker)** | Heavy Ranker | `MLScorer` | `scoring.py` |
 | **Scoring (Safety)** | Trust & Safety Models | `SafetyScorer` | `safety.py` |
 | **Filtering** | Visibility Filters | `Filter` classes | `filtering.py` |
-| **Data** | Tweet/User Store | `DataLoader` | `data_loader.py` |
+| **Data** | Tweetypie / Manhattan | `DataLoader` | `data_loader.py` |
 
 ## 3. Architectural Flow
 The system follows a strict multi-stage funnel architecture.
@@ -69,3 +69,119 @@ The system uses PyTorch to implement simplified versions of production models.
 ## 5. Data & Simulation
 - **Generation**: `prep/generate_dataset.py` creates synthetic data with power-law distributions for followers and interactions to mimic real social network topology.
 - **Loading**: `data_loader.py` uses a Singleton pattern to load Parquet files into memory, simulating a distributed data store.
+
+## 6. Embedding Consolidation Flow
+
+The three embeddings work together in a staged pipeline:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Stage 1: Parallel Candidate Retrieval (~500 candidates)                 │
+├─────────────────┬─────────────────────┬─────────────────────────────────┤
+│ InNetwork (200) │ OutOfNetwork (200)  │ Graph (100)                     │
+│ No embedding    │ SimClusters + TwHIN │ RealGraph                       │
+└────────┬────────┴──────────┬──────────┴────────────────┬────────────────┘
+         │                   │                           │
+         ▼                   ▼                           ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Stage 2: Feature Consolidation (20 features per candidate)             │
+│ • simclusters_score (0.0 if N/A)                                        │
+│ • twhin_score (0.0 if N/A)                                              │
+│ • author_similarity (0.0 if N/A)                                        │
+│ • engagement_prob, follow_prob, + 15 more                               │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Stage 3: Multi-Head Scoring (Weighted Fusion)                           │
+│ ┌───────────────┐ ┌───────────────┐ ┌───────────────────────────────┐   │
+│ │ Engagement 60%│ │ Follow 10%    │ │ Embedding 30%                 │   │
+│ │               │ │               │ │ SimClusters×0.25+TwHIN×0.20   │   │
+│ │               │ │               │ │ +RealGraph×0.15               │   │
+│ └───────┬───────┘ └───────┬───────┘ └───────────────┬───────────────┘   │
+│         └─────────────────┼─────────────────────────┘                   │
+│                           ▼                                             │
+│                   Final Score (0.0-1.0)                                 │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Insight**: Not all candidates use all embeddings. Missing scores default to 0.0, enabling graceful cross-source comparison.
+
+## 7. Discrepancy Analysis: Mimic vs Original Twitter Algorithm
+
+This section identifies key differences between this mimic and the original Twitter codebase, noting where simplifications are acceptable ("OK") and where rationales may be misleading ("Fix Needed").
+
+### 6.1 SimClusters Implementation
+
+| Aspect | Original Twitter | Mimic | Status |
+|--------|-----------------|-------|--------|
+| **Algorithm** | Community detection via Metropolis-Hastings sampling on Producer-Producer similarity graph | Hash-based deterministic mapping: `hash(interest) % 150` | ⚠️ Misleading |
+| **Input** | Follow graph (bipartite user-producer graph) | User `interests` field (predefined categories) | ⚠️ Simplified |
+| **Clusters** | ~145,000 communities from 20M producers | 150 fixed buckets | ✅ OK (scale) |
+| **Embedding Type** | Sparse "InterestedIn" vectors computed from KnownFor matrix | Sparse dict from hashed interests | ✅ Structurally similar |
+
+**Rationale Issue**: The README states SimClusters uses "community detection" but the implementation uses simple hashing. This is a **functional placeholder**, not a mimic of the actual algorithm.
+
+**Recommendation**: Either:
+1. Rename to `InterestClusters` to avoid confusion, OR
+2. Add a comment clarifying this is a "hash-based proxy for SimClusters, not community detection"
+
+### 6.2 TwHIN Implementation
+
+| Aspect | Original Twitter | Mimic | Status |
+|--------|-----------------|-------|--------|
+| **Architecture** | Knowledge graph embeddings (TransE-style) on heterogeneous graph | Two-tower neural network (user/tweet encoders) | ⚠️ Different approach |
+| **Training Data** | Follow, Favorite, Reply, Retweet edges | Synthetic interaction pairs | ✅ OK (simplified) |
+| **Embedding Dim** | 200-dim (per TwHIN paper) | 128-dim | ✅ OK (scale) |
+
+**Rationale Issue**: TwHIN in production is a **knowledge graph embedding** (TransE/DistMult style), not a two-tower model. The mimic's two-tower architecture is more similar to YouTube's recommendation model.
+
+**Recommendation**: The two-tower approach is valid for recommendations, but the naming could be clarified as "TwHIN-inspired two-tower model."
+
+### 6.3 Safety Models
+
+| Aspect | Original Twitter | Mimic | Status |
+|--------|-----------------|-------|--------|
+| **NSFW Model** | BERT-based text encoder (Twitter-BERT) + image models | Simple MLP on 10 numeric features | ⚠️ Fundamentally different |
+| **Toxicity Model** | Twitter-BERT / BERTweet with fine-tuning | Simple MLP on 10 numeric features | ⚠️ Fundamentally different |
+| **Input** | Raw text + images | Numeric features (text_length, has_media, etc.) | ⚠️ Missing text processing |
+
+**Rationale Issue**: The original safety models are **NLP-based** (transformer text encoders). The mimic uses **tabular features** which cannot capture actual content toxicity.
+
+**Recommendation**: This is acceptable for a mimic (no text data in synthetic dataset), but should be documented as "placeholder safety scoring based on metadata, not content analysis."
+
+### 6.4 Heavy Ranker
+
+| Aspect | Original Twitter | Mimic | Status |
+|--------|-----------------|-------|--------|
+| **Features** | ~6,000 features | 20 features | ✅ OK (scale) |
+| **Architecture** | MaskNet (TensorFlow) | Simple MLP (PyTorch) | ✅ OK (simplified) |
+| **Multi-task** | Predicts multiple engagement types | 3 heads (engagement, follow, embedding) | ✅ Accurate |
+| **Serving** | Navi (Rust-based model server) | Direct PyTorch inference | ✅ OK (single-machine) |
+
+**Status**: ✅ This is a **good mimic**. The multi-head architecture correctly captures the production pattern.
+
+### 6.5 Pipeline Architecture
+
+| Aspect | Original Twitter | Mimic | Status |
+|--------|-----------------|-------|--------|
+| **Framework** | Product Mixer (Scala) | Python classes | ✅ Structurally accurate |
+| **Candidate Sources** | Earlybird, CR-Mixer, UTEG, FRS | InNetwork, OutOfNetwork, Graph | ✅ Good coverage |
+| **Mixing** | Tweets + Ads + WTF + Conversations | Tweets only | ✅ OK (simplified) |
+
+**Status**: ✅ The pipeline structure is a **faithful mimic** of the Product Mixer pattern.
+
+## 8. Summary: What's Accurate vs Simplified
+
+| Component | Accuracy | Notes |
+|-----------|----------|-------|
+| Pipeline Architecture | ✅ High | Faithful Product Mixer mimic |
+| Candidate Sources | ✅ High | Correct 3-source pattern |
+| Heavy Ranker | ✅ High | Multi-head MTL is accurate |
+| SimClusters | ⚠️ Medium | Hash-based, not community detection |
+| TwHIN | ⚠️ Medium | Two-tower, not knowledge graph |
+| Safety Models | ⚠️ Low | Metadata-based, not NLP |
+| Feature Engineering | ✅ High | Correct patterns, reduced scale |
+| Evaluation Metrics | ✅ High | NDCG, RCE, AUC match production |
+
+**Overall**: This is a **good educational mimic** that captures the architectural essence of Twitter's recommendation system. The simplifications are reasonable for a single-machine implementation, but documentation should be clearer about where the mimic diverges from production.

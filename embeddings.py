@@ -5,7 +5,19 @@ import numpy as np
 from data_loader import get_data_loader
 
 class SimClusters:
-    """Community detection and sparse embeddings"""
+    """
+    Simplified interest-based clustering (hash-based proxy, NOT actual SimClusters).
+    
+    Production SimClusters uses Metropolis-Hastings sampling on a bipartite
+    follow graph to detect ~145K communities via Producer-Producer similarity.
+
+    This mimic uses deterministic hash-based clustering on user interests:
+    - hash(interest) % num_clusters -> cluster_id
+    - Preserves the sparse embedding structure (1-3 active clusters per user)
+    - Does NOT perform actual community detection or graph analysis
+    
+    Trade-off: Speed and simplicity over semantic accuracy.
+    """
     def __init__(self, num_clusters=150):
         self.num_clusters = num_clusters
         self.data_loader = get_data_loader()
@@ -73,7 +85,21 @@ class SimClusters:
         return dot_product / (norm_user * norm_tweet + 1e-8)
 
 class TwHIN:
-    """Dense knowledge graph embeddings using trained neural model"""
+    """
+    Two-tower embedding model (inspired by TwHIN, not identical architecture).
+    
+    Production TwHIN uses knowledge graph embeddings (TransE-style) trained on
+    a heterogeneous graph of users, tweets, hashtags, and entities.
+    See: https://github.com/twitter/the-algorithm-ml/blob/main/projects/twhin/README.md
+    
+    This mimic uses a simpler two-tower (dual encoder) architecture:
+    - User Tower: user features -> 128-dim embedding
+    - Tweet Tower: tweet features -> 128-dim embedding
+    - Similarity: cosine distance in shared latent space
+    
+    The two-tower approach achieves similar goals (user-tweet similarity)
+    but via metric learning rather than knowledge graph link prediction.
+    """
     def __init__(self, dim=128, use_trained_model=True):
         self.dim = dim
         self.data_loader = get_data_loader()
@@ -185,7 +211,20 @@ class TwHIN:
         return dot / (norm_u * norm_t + 1e-8)
 
 class RealGraph:
-    """User-user interaction prediction based on social graph"""
+    """
+    User-user interaction prediction based on social graph (rule-based).
+    
+    Production RealGraph is a learned model predicting interaction likelihood
+    between user pairs based on historical engagement patterns.
+    See: src/scala/com/twitter/interaction_graph/README.md
+    
+    This mimic uses rule-based heuristics:
+    - Follow weight from dataset (explicit signal)
+    - Interest overlap via Jaccard similarity (fallback)
+    - Neighborhood retrieval via follow relationship strength
+    
+    Simplification: No learned model, uses direct graph signals.
+    """
     def __init__(self):
         self.data_loader = get_data_loader()
         self.interaction_cache = {}
