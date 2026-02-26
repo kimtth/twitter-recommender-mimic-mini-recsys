@@ -38,25 +38,26 @@ Educational implementation covering core concepts from [Twitter's algorithm](htt
 
 ```mermaid
 flowchart TB
-    User[👤 User Request] --> Product[🎯 Product Pipeline]
-    Product --> Mixer[🎛️ Mixer Pipeline]
-    Mixer --> CandGen[📦 Candidate Generation]
-    Mixer --> Scoring[⚖️ Scoring & Ranking]
-    Mixer --> PostProcess[🔧 Post-Processing]
+    User["User Request"] --> Product["ProductPipeline"]
+    Product --> Gate{"Gate Check"}
+    Gate --> |pass| Mixer["MixerPipeline"]
+    Mixer --> CandGen["Candidate Generation"]
+    Mixer --> Scoring["Scoring & Ranking"]
+    Mixer --> PostProcess["Post-Processing"]
     
-    CandGen --> InNet[📱 In-Network]
-    CandGen --> OutNet[🌐 Out-of-Network]
-    CandGen --> Graph[🕸️ Graph-based]
+    CandGen --> InNet["In-Network\nEarlybird"]
+    CandGen --> OutNet["Out-of-Network\nCR-Mixer"]
+    CandGen --> Graph["Graph-based\nUTEG"]
     
-    Scoring --> ML[🤖 ML Models]
-    Scoring --> Safety[🛡️ Safety]
-    Scoring --> Recency[⏰ Recency]
-    Scoring --> Diversity[🎨 Diversity]
+    Scoring --> ML["Heavy Ranker"]
+    Scoring --> Safety["Safety Models"]
+    Scoring --> Recency["Recency"]
+    Scoring --> Diversity["Diversity"]
     
-    PostProcess --> Select[✅ Selectors]
-    PostProcess --> Filter[🚫 Filters]
+    PostProcess --> Select["Selectors"]
+    PostProcess --> Filter["Filters"]
     
-    Select --> Response[📤 Response]
+    Select --> Response["Response"]
     Filter --> Response
     
     style User fill:#e1f5ff
@@ -314,7 +315,7 @@ python prep/generate_dataset.py
 This creates a realistic synthetic dataset in `data/` (Parquet format):
 - **1,000 users** with followers, interests, and activity patterns
 - **10,000 tweets** with content features and categories
-- **~50,000 interactions** (likes, retweets, replies)
+- **~25,000 interactions** (likes, retweets, replies; generated from 50,000 sampled candidates at average engagement rate)
 - **Follow relationships** with interaction weights
 
 **Format**: Parquet files (10-20x smaller than JSON, faster to load)
@@ -380,7 +381,7 @@ Source Distribution:
 **ML Predictions:**
 - **`engagement`** (0.0-1.0) - Predicted probability of like/retweet/reply
   - Trained on historical interaction patterns
-  - Key driver of ranking (typically 60-70% of final score weight)
+  - Key driver of ranking (50% of combined score weight in `scoring.py`)
 - **`follow`** (0.0-1.0) - Predicted probability user will follow tweet author
   - Important for discovery (OutOfNetwork content)
   - Helps surface new creators
@@ -431,30 +432,30 @@ Filtered (High engagement but unsafe):
 
 ```mermaid
 graph TB
-    subgraph Core["🏗️ Core Framework"]
-        P[pipeline.py<br/>Base execution]
+    subgraph Core["Core Framework"]
+        P[pipeline.py<br/>ProductPipeline, MixerPipeline, Gate]
     end
     
-    subgraph Data["📦 Data Layer"]
+    subgraph Data["Data Layer"]
         C[candidates.py<br/>Source retrieval]
         E[embeddings.py<br/>SimClusters, TwHIN, RealGraph]
     end
     
-    subgraph ML["🤖 ML Layer"]
+    subgraph ML["ML Layer"]
         S[scoring.py<br/>Multi-head models]
         SF[safety.py<br/>Trust & Safety]
     end
     
-    subgraph PostProc["🔧 Post-Processing"]
+    subgraph PostProc["Post-Processing"]
         F[filtering.py<br/>Selectors & Filters]
     end
     
-    subgraph Eval["📊 Evaluation"]
+    subgraph Eval["Evaluation"]
         EV[eval/eval_metric.py<br/>Metrics]
         EO[eval/eval.py<br/>Runner]
     end
     
-    subgraph App["🎯 Application"]
+    subgraph App["Application"]
         M[main.py<br/>Example usage]
     end
     
@@ -466,8 +467,8 @@ graph TB
     M --> P
     M --> C
     M --> S
-    EV --> P
     EO --> EV
+    EO --> M
     
     style Core fill:#e1f5ff
     style Data fill:#fff3cd
@@ -510,16 +511,16 @@ graph TB
 - **Realistic Generation**: Uses statistical distributions (Pareto, Exponential, Beta) to mimic real-world patterns
 - **User Behavior**: Homophily (users follow similar interests), power law (few users have many followers)
 - **Engagement Modeling**: Combines in-network boost, interest matching, content quality, recency
-- **Training Data**: 50K+ synthetic interactions for training PyTorch models
+- **Training Data**: ~25K synthetic interactions (80% train split) for training PyTorch models
 
 ### PyTorch Models
 
 | Model | Architecture | Parameters | Purpose |
 |-------|-------------|------------|--------|
-| `EngagementModel` | Shared tower + 3 heads | ~50K | Multi-task engagement prediction |
-| `NSFWModel` | 3-layer MLP | ~5K | Content safety (metadata-based) |
-| `ToxicityModel` | 3-layer MLP | ~5K | Content safety (metadata-based) |
-| `TwHINEmbeddingModel` | Two-tower (user/tweet) | ~100K | 128-dim semantic embeddings |
+| `EngagementModel` | Shared tower + 3 heads | ~18K | Multi-task engagement prediction |
+| `NSFWModel` | 3-layer MLP | ~3K | Content safety (metadata-based) |
+| `ToxicityModel` | 3-layer MLP | ~3K | Content safety (metadata-based) |
+| `TwHINEmbeddingModel` | Two-tower (user/tweet) | ~104K | 128-dim semantic embeddings |
 
 **Integration**: Auto-loaded from `models/*.pt` files. Falls back to heuristics if missing.
 
@@ -567,8 +568,8 @@ Evaluation system mirrors Twitter's metrics pipeline:
 | **Scale** | 1K users, 10K tweets | 300M+ users, billions of tweets |
 | **Features** | 20 features | 6000+ features |
 | **Candidates** | ~500 per request | Millions filtered through funnels |
-| **Models** | 4 models (~160K params) | Dozens of models (millions of params) |
-| **Training Data** | ~40K synthetic interactions | Billions of real interactions |
+| **Models** | 4 models (~128K params) | Dozens of models (millions of params) |
+| **Training Data** | ~25K synthetic interactions | Billions of real interactions |
 | **Embeddings** | On-demand computed by models | Real-time computed, frequently updated |
 | **Infrastructure** | Single Python process | Distributed system (Kafka, Manhattan, Servo) |
 | **Serving** | Synchronous, ~1-2s | Async with caching, <200ms p99 |
@@ -625,6 +626,6 @@ Evaluation system mirrors Twitter's metrics pipeline:
 | **SimClusters** | Metropolis-Hastings on follow graph → 145K communities | `hash(interest) % 150` | Preserves sparse embedding structure |
 | **TwHIN** | TransE on heterogeneous knowledge graph | Two-tower neural network | Achieves same goal (user-tweet similarity) |
 | **Safety** | Twitter-BERT text encoder + image models | MLP on 10 numeric features | No text in synthetic data |
-| **Scale** | 6000+ features, millions of params | 20 features, 160K params | Educational scope |
+| **Scale** | 6000+ features, millions of params | 20 features, ~128K params | Educational scope |
 
 *See [Agent.md](Agent.md) for detailed discrepancy analysis.*

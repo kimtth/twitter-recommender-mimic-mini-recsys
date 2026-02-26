@@ -1,4 +1,9 @@
-"""Graph embeddings - mimics SimClusters and TwHIN"""
+"""Graph embeddings — mimics SimClusters, TwHIN, and RealGraph.
+
+SimClusters: src/scala/com/twitter/simclusters_v2/
+TwHIN:       src/python/twitter/the_algorithm_ml/projects/twhin/
+RealGraph:   src/scala/com/twitter/interaction_graph/
+"""
 import math
 import os
 import numpy as np
@@ -260,7 +265,7 @@ class RealGraph:
         ]
         user_weights.sort(key=lambda x: x[1], reverse=True)
         
-        return [user_id for user_id, _ in user_weights[:k]]
+        return [uid for uid, _ in user_weights[:k]]
 
 class GraphFeatureService:
     """Compute graph-based features between users"""

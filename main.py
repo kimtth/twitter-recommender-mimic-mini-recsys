@@ -36,7 +36,7 @@ def create_for_you_pipeline():
             MLScorer(),           # Heavy Ranker (multi-head: engagement, follow, embeddings)
             SafetyScorer(),       # Trust & Safety (NSFW, toxicity)
             RecencyScorer(),      # Time decay
-            DiversityScorer(),    # Author diversity
+            DiversityScorer(),    # Source diversity (InNetwork/OutOfNetwork/Graph)
         ]
     )
     

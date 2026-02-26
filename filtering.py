@@ -1,4 +1,8 @@
-"""Filters and selectors - mimics visibility filters and heuristics"""
+"""Filters and selectors — mimics VisibilityLibrary and Product Mixer selectors.
+
+Visibility filters: visibilitylib/
+Selectors: product-mixer/core/src/main/scala/com/twitter/product_mixer/core/functional_component/selector/
+"""
 
 class Filter:
     def __init__(self, name):

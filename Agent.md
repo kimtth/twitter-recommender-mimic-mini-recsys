@@ -33,13 +33,13 @@ The system follows a strict multi-stage funnel architecture.
 ### Stage 2: Scoring (Heavy Ranker)
 **Goal**: Score each candidate to predict engagement.
 - **Feature Extraction**: `MLScorer._extract_model_features` extracts ~20 features (user, tweet, interaction context).
-- **Inference**: Uses `EngagementModel` (PyTorch) to predict `p(Engagement)`, `p(Follow)`, and `p(Embedding similarity)`.
+- **Inference**: Uses `EngagementModel` (PyTorch) to predict `p(Engagement)` and `p(Follow)`. The third head (`embedding`) exists in the model but its output is not consumed by `scoring.py`; the 30% embedding component is computed directly from stored feature similarities (`simclusters_score`, `twhin_score`, `author_similarity`).
 - **Fallback**: If no model is trained, uses heuristic scoring based on dataset statistics.
 
 ### Stage 3: Filtering & Selection
 **Goal**: Apply business rules and safety constraints.
 - **Safety**: `SafetyScorer` runs `NSFWModel` and `ToxicityModel`. High scores result in heavy penalties or removal.
-- **Diversity**: `DiversityScorer` penalizes consecutive tweets from the same author.
+- **Diversity**: `DiversityScorer` penalizes candidates from the same **source** (InNetwork / OutOfNetwork / Graph) that appear consecutively, reducing source-level repetition.
 - **Balance**: `ContentBalanceFilter` ensures a 50/50 mix of In-Network and Out-Of-Network content.
 
 ## 4. Machine Learning Models

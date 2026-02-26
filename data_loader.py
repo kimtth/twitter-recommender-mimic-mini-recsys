@@ -1,4 +1,12 @@
-"""Load and access synthetic dataset"""
+"""Load and access synthetic dataset.
+
+Mimics data stores backing Twitter's recommendation pipeline:
+- Tweetypie (tweet metadata)
+- Manhattan (key-value user data)
+- Interaction Graph (follow/engagement edges)
+
+See: tweetypie/, src/scala/com/twitter/interaction_graph/
+"""
 import os
 import numpy as np
 import pandas as pd
@@ -70,6 +78,14 @@ class DataLoader:
             for f in self.follows
         }
         
+        # Follower -> [followed_ids] for O(1) get_followed_users
+        self.follower_index = {}
+        for f in self.follows:
+            fid = f['follower_id']
+            if fid not in self.follower_index:
+                self.follower_index[fid] = []
+            self.follower_index[fid].append(f['followed_id'])
+        
         # User interactions for history
         self.user_interactions = {}
         for inter in self.interactions:
@@ -98,10 +114,7 @@ class DataLoader:
     
     def get_followed_users(self, user_id):
         """Get list of users followed by user_id"""
-        return [
-            followed_id for (follower, followed_id) in self.follow_index.keys()
-            if follower == user_id
-        ]
+        return self.follower_index.get(user_id, [])
     
     def get_user_tweets(self, user_id):
         """Get tweets authored by user"""
@@ -124,43 +137,6 @@ class DataLoader:
         recent.sort(key=lambda t: t['hours_old'])
         return recent[:limit]
     
-    def compute_simclusters_similarity(self, user_id1, user_id2):
-        """Compute SimClusters cosine similarity between two users"""
-        emb1 = self.get_simclusters_embedding(user_id1)
-        emb2 = self.get_simclusters_embedding(user_id2)
-        
-        if not emb1 or not emb2:
-            return 0.0
-        
-        # Build sparse vectors
-        vec1 = {c: s for c, s in zip(emb1['clusters'], emb1['scores'])}
-        vec2 = {c: s for c, s in zip(emb2['clusters'], emb2['scores'])}
-        
-        # Compute cosine similarity
-        common_clusters = set(vec1.keys()) & set(vec2.keys())
-        if not common_clusters:
-            return 0.0
-        
-        dot_product = sum(vec1[c] * vec2[c] for c in common_clusters)
-        norm1 = np.sqrt(sum(s**2 for s in vec1.values()))
-        norm2 = np.sqrt(sum(s**2 for s in vec2.values()))
-        
-        return dot_product / (norm1 * norm2 + 1e-8)
-    
-    def compute_twhin_similarity(self, user_id1, user_id2):
-        """Compute TwHIN cosine similarity between two users"""
-        emb1 = self.get_twhin_embedding(user_id1)
-        emb2 = self.get_twhin_embedding(user_id2)
-        
-        if emb1 is None or emb2 is None:
-            return 0.0
-        
-        dot_product = np.dot(emb1, emb2)
-        norm1 = np.linalg.norm(emb1)
-        norm2 = np.linalg.norm(emb2)
-        
-        return dot_product / (norm1 * norm2 + 1e-8)
-
 # Singleton instance
 _data_loader = None
 
