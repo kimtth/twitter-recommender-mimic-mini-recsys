@@ -38,25 +38,26 @@ Educational implementation covering core concepts from [Twitter's algorithm](htt
 
 ```mermaid
 flowchart TB
-    User[👤 User Request] --> Product[🎯 Product Pipeline]
-    Product --> Mixer[🎛️ Mixer Pipeline]
-    Mixer --> CandGen[📦 Candidate Generation]
-    Mixer --> Scoring[⚖️ Scoring & Ranking]
-    Mixer --> PostProcess[🔧 Post-Processing]
+    User["User Request"] --> Product["ProductPipeline"]
+    Product --> Gate{"Gate Check"}
+    Gate --> |pass| Mixer["MixerPipeline"]
+    Mixer --> CandGen["Candidate Generation"]
+    Mixer --> Scoring["Scoring & Ranking"]
+    Mixer --> PostProcess["Post-Processing"]
     
-    CandGen --> InNet[📱 In-Network]
-    CandGen --> OutNet[🌐 Out-of-Network]
-    CandGen --> Graph[🕸️ Graph-based]
+    CandGen --> InNet["In-Network\nEarlybird"]
+    CandGen --> OutNet["Out-of-Network\nCR-Mixer"]
+    CandGen --> Graph["Graph-based\nUTEG"]
     
-    Scoring --> ML[🤖 ML Models]
-    Scoring --> Safety[🛡️ Safety]
-    Scoring --> Recency[⏰ Recency]
-    Scoring --> Diversity[🎨 Diversity]
+    Scoring --> ML["Heavy Ranker"]
+    Scoring --> Safety["Safety Models"]
+    Scoring --> Recency["Recency"]
+    Scoring --> Diversity["Diversity"]
     
-    PostProcess --> Select[✅ Selectors]
-    PostProcess --> Filter[🚫 Filters]
+    PostProcess --> Select["Selectors"]
+    PostProcess --> Filter["Filters"]
     
-    Select --> Response[📤 Response]
+    Select --> Response["Response"]
     Filter --> Response
     
     style User fill:#e1f5ff
@@ -431,30 +432,30 @@ Filtered (High engagement but unsafe):
 
 ```mermaid
 graph TB
-    subgraph Core["🏗️ Core Framework"]
-        P[pipeline.py<br/>Base execution]
+    subgraph Core["Core Framework"]
+        P[pipeline.py<br/>ProductPipeline, MixerPipeline, Gate]
     end
     
-    subgraph Data["📦 Data Layer"]
+    subgraph Data["Data Layer"]
         C[candidates.py<br/>Source retrieval]
         E[embeddings.py<br/>SimClusters, TwHIN, RealGraph]
     end
     
-    subgraph ML["🤖 ML Layer"]
+    subgraph ML["ML Layer"]
         S[scoring.py<br/>Multi-head models]
         SF[safety.py<br/>Trust & Safety]
     end
     
-    subgraph PostProc["🔧 Post-Processing"]
+    subgraph PostProc["Post-Processing"]
         F[filtering.py<br/>Selectors & Filters]
     end
     
-    subgraph Eval["📊 Evaluation"]
+    subgraph Eval["Evaluation"]
         EV[eval/eval_metric.py<br/>Metrics]
         EO[eval/eval.py<br/>Runner]
     end
     
-    subgraph App["🎯 Application"]
+    subgraph App["Application"]
         M[main.py<br/>Example usage]
     end
     
@@ -466,8 +467,8 @@ graph TB
     M --> P
     M --> C
     M --> S
-    EV --> P
     EO --> EV
+    EO --> M
     
     style Core fill:#e1f5ff
     style Data fill:#fff3cd

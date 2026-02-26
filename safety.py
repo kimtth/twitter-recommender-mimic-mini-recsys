@@ -1,4 +1,9 @@
-"""Trust and safety models - content filtering"""
+"""Trust and safety models — content filtering.
+
+Mimics trust_and_safety_models/ from twitter/the-algorithm.
+Production uses Twitter-BERT + vision models; this proxy uses
+metadata MLP classifiers on synthetic features.
+"""
 import os
 import numpy as np
 from data_loader import get_data_loader
@@ -36,9 +41,9 @@ class NSFWModel:
             1.0 if tweet.get('category', '') == 'news' else 0.0,
             np.log1p(tweet.get('author_followers', 0)) / 10.0,
             1.0 if tweet.get('author_verified', False) else 0.0,
-            np.random.random(),  # Placeholder for text embedding features
-            np.random.random(),
-            np.random.random()
+            tweet.get('quality_score', 0.5),      # deterministic placeholder
+            tweet.get('nsfw_score', 0.0),          # deterministic placeholder
+            tweet.get('toxicity_score', 0.0),      # deterministic placeholder
         ]
     
     def predict(self, candidate):
@@ -90,9 +95,9 @@ class ToxicityModel:
             1.0 if tweet.get('category', '') == 'news' else 0.0,
             np.log1p(tweet.get('author_followers', 0)) / 10.0,
             1.0 if tweet.get('author_verified', False) else 0.0,
-            np.random.random(),  # Placeholder for text embedding features
-            np.random.random(),
-            np.random.random()
+            tweet.get('quality_score', 0.5),      # deterministic placeholder
+            tweet.get('nsfw_score', 0.0),          # deterministic placeholder
+            tweet.get('toxicity_score', 0.0),      # deterministic placeholder
         ]
     
     def predict(self, candidate):

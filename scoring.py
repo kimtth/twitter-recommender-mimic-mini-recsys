@@ -1,4 +1,10 @@
-"""Scoring and ranking - mimics Heavy Ranker with multiple models"""
+"""Scoring and ranking — mimics the Heavy Ranker served by Navi.
+
+Heavy Ranker source:
+  home-mixer/server/src/main/scala/com/twitter/home_mixer/product/scored_tweets/scoring_pipeline/
+Navi model server:
+  navi/
+"""
 import math
 import os
 import numpy as np
@@ -101,7 +107,7 @@ class MLScorer(Scorer):
             0.0,
             
             # Interest overlap
-            1.0 if tweet.get('category', '') in user.get('interests', []) else 0.0 if user else 0.0,
+            1.0 if user and tweet.get('category', '') in user.get('interests', []) else 0.0,
             
             # Quality indicators
             tweet.get('quality_score', 0.5),
@@ -244,13 +250,18 @@ class DiversityScorer(Scorer):
         return candidates
 
 class RecencyScorer(Scorer):
-    """Simulates time-decay"""
+    """Time-decay boost — newer tweets rank higher."""
     def __init__(self):
         super().__init__("Recency")
+        self.data_loader = get_data_loader()
     
     def score(self, query, candidates):
-        # Simulate recency boost (newer IDs = higher boost)
         for candidate in candidates:
-            recency_boost = (candidate.id % 1000) / 1000.0
+            tweet = self.data_loader.get_tweet(candidate.id)
+            if tweet:
+                hours_old = tweet.get('hours_old', 168)
+                recency_boost = math.exp(-hours_old / 72.0)  # 72h half-life
+            else:
+                recency_boost = 0.5
             candidate.score *= (0.8 + 0.4 * recency_boost)
         return candidates

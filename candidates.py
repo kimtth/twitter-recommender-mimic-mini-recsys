@@ -1,4 +1,8 @@
-"""Candidate sources - mimics Earlybird, UTEG, CR-Mixer"""
+"""Candidate sources — mimics Earlybird, UTEG, CR-Mixer, FRS.
+
+Each source corresponds to a CandidatePipeline in Twitter's Product Mixer.
+See: home-mixer/server/src/main/scala/com/twitter/home_mixer/product/scored_tweets/candidate_pipeline/
+"""
 from pipeline import CandidateWithDetails
 from embeddings import SimClusters, TwHIN, RealGraph
 from data_loader import get_data_loader
@@ -11,7 +15,10 @@ class CandidateSource:
         raise NotImplementedError
 
 class InNetworkSource(CandidateSource):
-    """Earlybird search index - tweets from followed users"""
+    """Earlybird search index — tweets from followed users.
+
+    Source: home-mixer/.../ScoredTweetsInNetworkCandidatePipelineConfig.scala
+    """
     def __init__(self):
         super().__init__("InNetwork")
         self.data_loader = get_data_loader()
@@ -36,7 +43,11 @@ class InNetworkSource(CandidateSource):
         return candidates[:200]
 
 class OutOfNetworkSource(CandidateSource):
-    """Simulates CR-Mixer - tweets from similar users using SimClusters"""
+    """CR-Mixer — out-of-network discovery via SimClusters + TwHIN.
+
+    Source: cr-mixer/server/src/main/scala/com/twitter/cr_mixer/
+    Pipeline: home-mixer/.../ScoredTweetsTweetMixerCandidatePipelineConfig.scala
+    """
     def __init__(self):
         super().__init__("OutOfNetwork")
         self.data_loader = get_data_loader()
@@ -72,7 +83,11 @@ class OutOfNetworkSource(CandidateSource):
         return candidates[:200]
 
 class GraphSource(CandidateSource):
-    """Simulates UTEG - graph-based recommendations using RealGraph"""
+    """User Tweet Entity Graph (UTEG) — graph-based recommendations via RealGraph.
+
+    Source: src/scala/com/twitter/recos/user_tweet_entity_graph/
+    Pipeline: home-mixer/.../ScoredTweetsUtegCandidatePipelineConfig.scala
+    """
     def __init__(self):
         super().__init__("Graph")
         self.data_loader = get_data_loader()
@@ -101,16 +116,35 @@ class GraphSource(CandidateSource):
         return candidates[:100]
 
 class FollowRecommendationSource(CandidateSource):
-    """FRS - user recommendations based on social graph"""
+    """Follow Recommendation Service (FRS) — user recommendations.
+
+    Source: follow-recommendations-service/
+    Pipeline: home-mixer/.../ScoredTweetsFrsCandidatePipelineConfig.scala
+    """
     def __init__(self):
         super().__init__("FollowRecs")
-        self.user_pool_size = 10000
+        self.data_loader = get_data_loader()
+        self.real_graph = RealGraph()
     
     def fetch(self, query):
-        # Find similar users via collaborative filtering
-        hash_val = hash(str(query.user_id))
+        """Find users the requester may want to follow, then surface their tweets."""
+        followed_users = set(self.data_loader.get_followed_users(query.user_id))
+        # Score unconnected users by interest overlap
+        scored_users = []
+        for user in self.data_loader.users[:200]:  # sample pool
+            uid = user['user_id']
+            if uid == query.user_id or uid in followed_users:
+                continue
+            score = self.real_graph.predict_interaction(query.user_id, uid)
+            if score > 0:
+                scored_users.append((uid, score))
+        scored_users.sort(key=lambda x: x[1], reverse=True)
+
         candidates = []
-        for i in range(5):
-            user_id = 5000 + ((hash_val + i * 73) % 20)
-            candidates.append(CandidateWithDetails(user_id, self.name))
+        for uid, _ in scored_users[:5]:
+            tweets = self.data_loader.get_user_tweets(uid)
+            for tweet in tweets[:3]:
+                candidate = CandidateWithDetails(tweet['tweet_id'], self.name)
+                candidate.features['author_id'] = tweet['author_id']
+                candidates.append(candidate)
         return candidates
